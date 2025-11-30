@@ -1,66 +1,146 @@
-# ComfyEngine
 
-Qt-based memory scanner / watchlist playground inspired by Cheat Engine but works nativly on Linux and tuned for my workflow:
-clean docks, pointer graphs, quick patching, and zero fear of losing context when you bounce between
-scanner, scripts, and notes.
+# **ComfyEngine**  
 
+Qt-based memory scanner / watchlist playground inspired by Cheat Engine but built natively for Linux and tuned for my workflow: clean docks, pointer graphs, fast patching, and zero fear of losing context when you bounce between scanner, scripts, and notes.
 
-## What you get
-
-- **Scanner** – Exact/Unknown/Changed/Range/AoB, optional alignment, fast scan, skip masked pages.
-- **Results/Watchlist** – Per-row scripts, pointer flagging, freeze + auto-enforce, spike coloring,
-  save/load tables, tracking dock for diffing snapshots.
-- **Pointer + Memory tools** – Pointer graph visualization, memory viewer, hex patch widget, Auto
-  Assembler templates, and auto-generated `patch/restore` scripts.
-- **Quality-of-life** – Notes dock, script editor, navigator sidebar, settings page with launch
-  options, detach confirmation, refresh cadence, spark duration, etc.
-
+ComfyEngine gives you a clean, modern, Linux-first alternative to CE without the ceserver headache. All docks are movable, all colors follow your Qt theme, and all tools live in one workspace.
 
 <img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/506a020f-d516-4bee-9215-c830cdac00cc" />
 
+---
 
-(The colors depend on your theme. The whole UI is customizable.)
+## **What You Get**
 
-## Build
+### **Scanner**
 
-Requirements: Qt 6 (Widgets), Capstone, CMake ≥ 3.16, C++17 compiler, Ninja/Make.
+* Exact / Unknown / Changed / Range / etc
+* Optional alignment
+* Fast scanning engine
+* Skip masked/unreadable pages
+* First Scan → Next Scan workflow (Undo scan available)
+
+### **Results & Watchlist**
+
+* One-click add to watchlist (double-click)
+* Pointer toggles & flags
+* Freeze + auto-enforce
+* Spike/value drift coloring
+* Save/load watch tables
+* Track-changes dock for snapshot diffs
+
+### **Pointer & Memory Tools**
+
+* Pointer graph visualization
+* Hex + memory viewer
+* Inline patch widget
+* Auto Assembler templates
+* Auto-generated patch/restore scripts
+* Instruction context view
+
+### **Quality of Life**
+
+* Notes dock
+* Script editor
+* Navigator sidebar
+* Layouts saved via QSettings
+
+The colors depend on your theme. Everything is dockable and fully customizable.
+
+---
+
+## **Build**
+
+**Requirements:**
+
+* Qt 6 (Widgets)
+* Capstone
+* CMake ≥ 3.16
+* C++17 compiler
+* Ninja or Make
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
 cmake --build build
-# optional
+# optional:
 cmake --install build --prefix /usr/local
 ```
 
-Executable lives in `./build/src/comfyengine`. Helper utilities (`test_watch`, `ce_watch`) stay in
-the repo root.
+Executable lives at:
 
-## Run-through
+```
+build/src/comfyengine
+```
 
-1. Launch the app, click **Select process…**, pick your target.
-2. Enter a value in the Memory Scan panel, hit **First Scan**, then **Next Scan** to narrow things
-   down. Switch modes if you’re hunting by ranges/AoB.
-3. Double-click a result to throw it into the watchlist. Right-click for patching, pointer tracing,
-   or “Track changes”.
-4. Use the toolbar buttons for Auto Assembler, Memory Viewer, Pointer Scanner, and stuff.
-5. Navigator dock on the left switches between Scanner, Memory, Scripts, Pointer Graph, Tools,
-   Settings, and stuff.
+Helper tools (`test_watch`, `ce_watch`) live in the repo root.
 
-Settings persist via `QSettings` so whatever layout/refresh cadence you prefer sticks next boot.
+---
 
-## Tests
+## **Install (AUR)**
+
+ComfyEngine has an official AUR package:
+
+### **Git (development) version**
+
+```bash
+yay -S comfyengine-git
+```
+
+This builds the latest commit directly from GitHub.
+
+### **Manual build**
+
+If you want to build without AUR:
+
+```bash
+git clone https://github.com/kashithecomfy/ComfyEngine
+cd ComfyEngine
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+sudo cmake --install build
+```
+
+---
+
+## **Usage**
+
+1. Launch ComfyEngine
+2. Click **Select Process…**, choose your target
+3. Enter a value in **Memory Scan**
+4. Hit **First Scan**, then **Next Scan**
+5. Double-click results to send them to your watchlist
+6. Right-click any address for patching, tracing, watching, etc.
+7. Use toolbar for Auto Assembler, Memory Viewer, Pointer Scanner
+8. Configure refresh cadence in **Settings**
+
+ComfyEngine keeps your layout and preferences across sessions using QSettings.
+
+---
+
+## **Tests**
+
+Run the full test suite:
 
 ```bash
 ctest --test-dir build --output-on-failure
+```
+
+Or run the internal test tool:
+
+```bash
 ./build/test_watch
 ```
 
-Register new suites via `add_test` in the relevant `CMakeLists.txt`.
+Register new suites via `add_test()` in the relevant CMakeLists.
 
-## Want to help keep things comfy?
+---
 
-- File issues / PRs: [github.com/kashithecomfy/ComfyEngine](https://github.com/kashithecomfy/ComfyEngine)
-- Buy me caffeine: [buymeacoffee.com/comfykashi](https://buymeacoffee.com/comfykashi)
+## **Support / Contribution**
 
-This is my first public project, hopefully will do more!
-Have fun breaking apps responsibly.
+Issues & PRs welcome:
+**[https://github.com/kashithecomfy/ComfyEngine](https://github.com/kashithecomfy/ComfyEngine)**
+
+Want to fuel development?
+**[https://buymeacoffee.com/comfykashi](https://buymeacoffee.com/comfykashi)**
+
+This is my first public project, more coming.
+Break apps responsibly and stay comfy!
