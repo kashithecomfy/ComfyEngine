@@ -33,6 +33,15 @@ public:
     bool readMemory(uintptr_t address, void *buffer, size_t len) const;
     bool writeMemory(uintptr_t address, const void *buffer, size_t len) const;
 
+    // Remote Allocation & Control
+    uintptr_t allocateMemory(size_t size, int prot = 7 /* PROT_READ|WRITE|EXEC */);
+    bool freeMemory(uintptr_t address, size_t size);
+
+    // Low-level ptrace helpers
+    bool setExecutionPointer(uintptr_t ip);
+    uintptr_t getExecutionPointer() const;
+    uint64_t remoteCall(uintptr_t address, uint64_t rdi = 0, uint64_t rsi = 0);
+
 private:
     bool attached_{false};
     pid_t pid_{-1};

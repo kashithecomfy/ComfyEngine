@@ -84,6 +84,7 @@ private:
     core::ValueType currentValueType() const;
     core::ScanMode currentScanMode() const;
     core::ScanParams currentScanParams(bool forNext) const;
+    void updateInputBoxState();
     void populateResults();
     void populateWatchList(bool force = false);
     void refreshWatchValues(bool force = false);
@@ -98,6 +99,7 @@ private:
     int resultRowCount() const;
     QVariant resultData(int row, int column, int role) const;
     uintptr_t resultAddressForRow(int row) const;
+    uintptr_t resolvePointerChain(uintptr_t base, const std::vector<int64_t> &offsets) const;
     void notifyResultsReset();
     void applyGlobalStyle();
     void onScriptSubmitted(const QString &name, const QString &script);
@@ -192,6 +194,7 @@ private:
         core::ValueType type;
         QString description;
         bool isPointer{false};
+        std::vector<int64_t> offsets; // For [base]+off1]+off2...
         bool frozen{false};
         QByteArray stored; // value to enforce when frozen
         QByteArray last;   // last observed value

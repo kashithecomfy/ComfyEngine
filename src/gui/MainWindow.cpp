@@ -300,7 +300,13 @@ void MainWindow::setupUi() {
         if (!target_) return;
         for (const auto &w : watches_) {
             if (!w.frozen || w.stored.isEmpty()) continue;
-            target_->writeMemory(w.address, w.stored.data(), static_cast<size_t>(w.stored.size()));
+            uintptr_t effectiveAddr = w.address;
+            if (w.isPointer && !w.offsets.empty()) {
+                effectiveAddr = resolvePointerChain(w.address, w.offsets);
+            }
+            if (effectiveAddr != 0) {
+                target_->writeMemory(effectiveAddr, w.stored.data(), static_cast<size_t>(w.stored.size()));
+            }
         }
     });
     watchRefreshTimer_ = new QTimer(this);
@@ -321,6 +327,39 @@ void MainWindow::setupUi() {
     typeCombo_->setCurrentIndex(2);
     modeCombo_ = new QComboBox(this);
     modeCombo_->addItems({"Exact", "Unknown", "Changed", "Unchanged", "Increased", "Decreased", "Greater Than", "Less Than", "Between", "AOB"});
+    connect(modeCombo_, qOverload<int>(&QComboBox::currentIndexChanged), this, [this](int index) {
+        core::ScanMode mode = static_cast<core::ScanMode>(index);
+        bool needsValue = (mode == core::ScanMode::Exact || 
+                           mode == core::ScanMode::GreaterThan || 
+                           mode == core::ScanMode::LessThan || 
+                           mode == core::ScanMode::Changed || // Changed can take a value for "Changed by"
+                           mode == core::ScanMode::Increased || 
+                           mode == core::ScanMode::Decreased);
+        
+        bool needsTwoValues = (mode == core::ScanMode::Between);
+        
+        // Some modes like UnknownInitial, Unchanged, Aob might behave differently
+        // But for generic UI updates:
+        
+        if (mode == core::ScanMode::UnknownInitial) {
+            valueEdit_->setEnabled(false);
+            valueEdit2_->setEnabled(false);
+        } else if (mode == core::ScanMode::Between) {
+            valueEdit_->setEnabled(true);
+            valueEdit2_->setEnabled(true);
+        } else {
+            // For Exact and others, enable first box
+            valueEdit_->setEnabled(true);
+            valueEdit2_->setEnabled(false);
+        }
+        
+        if (mode == core::ScanMode::Aob) {
+             valueEdit_->setPlaceholderText("e.g. 90 90 ?? FF");
+        } else {
+             valueEdit_->setPlaceholderText("");
+        }
+    });
+    
     hexCheck_ = new QCheckBox("Hex", this);
     firstScanBtn_ = new QPushButton("First Scan", this);
     nextScanBtn_ = new QPushButton("Next Scan", this);
@@ -1413,6 +1452,25 @@ core::ScanMode MainWindow::currentScanMode() const {
     }
 }
 
+void MainWindow::updateInputBoxState() {
+    core::ScanMode mode = currentScanMode();
+    if (mode == core::ScanMode::UnknownInitial) {
+        valueEdit_->setEnabled(false);
+        valueEdit2_->setEnabled(false);
+    } else if (mode == core::ScanMode::Between) {
+        valueEdit_->setEnabled(true);
+        valueEdit2_->setEnabled(true);
+    } else {
+        valueEdit_->setEnabled(true);
+        valueEdit2_->setEnabled(false);
+    }
+    if (mode == core::ScanMode::Aob || currentValueType() == core::ValueType::ArrayOfByte) {
+        valueEdit_->setPlaceholderText("e.g. 90 90 ?? FF");
+    } else {
+        valueEdit_->setPlaceholderText("");
+    }
+}
+
 core::ScanParams MainWindow::currentScanParams(bool /*forNext*/) const {
     core::ScanParams p;
     p.type = currentValueType();
@@ -1445,21 +1503,7 @@ core::ScanParams MainWindow::currentScanParams(bool /*forNext*/) const {
     unsigned long long end = endAddrEdit_->text().toULongLong(&ok, 0);
     if (ok) p.endAddress = static_cast<uintptr_t>(end);
 
-    if (p.mode == core::ScanMode::UnknownInitial) {
-        valueEdit_->setEnabled(false);
-        valueEdit2_->setEnabled(false);
-    } else if (p.mode == core::ScanMode::Between) {
-        valueEdit_->setEnabled(true);
-        valueEdit2_->setEnabled(true);
-    } else {
-        valueEdit_->setEnabled(true);
-        valueEdit2_->setEnabled(false);
-    }
-    if (p.mode == core::ScanMode::Aob || p.type == core::ValueType::ArrayOfByte) {
-        valueEdit_->setPlaceholderText("e.g. 90 90 ?? FF");
-    } else {
-        valueEdit_->setPlaceholderText("");
-    }
+    const_cast<MainWindow*>(this)->updateInputBoxState();
     return p;
 }
 
@@ -1547,6 +1591,10 @@ void MainWindow::onFirstScan() {
         refreshValuesBtn_->setEnabled(true);
         autoRefreshCheck_->setEnabled(true);
         stopScanBtn_->setEnabled(false);
+        
+        // Ensure input boxes are enabled if mode requires them
+        updateInputBoxState();
+        
         updateUndoState();
         delete progress;
         if (!ok) {
@@ -1560,8 +1608,12 @@ void MainWindow::onFirstScan() {
         populateResults();
         recordScanSnapshot();
         size_t count = scanner_ ? scanner_->results().size() : 0;
-        QString detail = QString("%1 result%2").arg(static_cast<qulonglong>(count)).arg(count == 1 ? "" : "s");
-        setStatusDetail(detail);
+        if (count == 0 && scanner_ && scanner_->hasShadowCopy()) {
+            setStatusDetail(QStringLiteral("Snapshot complete. Perform Next Scan."));
+        } else {
+            QString detail = QString("%1 result%2").arg(static_cast<qulonglong>(count)).arg(count == 1 ? "" : "s");
+            setStatusDetail(detail);
+        }
     });
     scanThread_->start();
 }
@@ -1623,6 +1675,10 @@ void MainWindow::onNextScan() {
         refreshValuesBtn_->setEnabled(true);
         autoRefreshCheck_->setEnabled(true);
         stopScanBtn_->setEnabled(false);
+        
+        // Ensure input boxes are enabled if mode requires them
+        updateInputBoxState();
+        
         updateUndoState();
         delete progress;
         if (!ok) {
@@ -1693,6 +1749,11 @@ void MainWindow::onProcessClicked() {
     processDialog_->activateWindow();
 }
 
+int MainWindow::resultRowCount() const {
+    if (!scanner_) return 0;
+    return std::min<int>(static_cast<int>(scanner_->results().size()), 10000);
+}
+
 void MainWindow::populateResults() {
     if (!scanner_) {
         lastValues_.clear();
@@ -1702,32 +1763,19 @@ void MainWindow::populateResults() {
         notifyResultsReset();
         return;
     }
+    
     const auto &res = scanner_->results();
-    std::unordered_map<uintptr_t, uint64_t> newLast;
-    std::unordered_map<uintptr_t, uint64_t> newLive;
-    std::unordered_map<uintptr_t, uint64_t> newFirst;
-    newLast.reserve(res.size());
-    newLive.reserve(res.size());
-    newFirst.reserve(res.size());
-    changedAddresses_.clear();
-
-    for (const auto &r : res) {
-        newLast[r.address] = r.raw;
-        newLive[r.address] = r.raw;
-        auto fit = firstValues_.find(r.address);
-        if (fit != firstValues_.end()) {
-            newFirst[r.address] = fit->second;
-        } else {
-            newFirst[r.address] = r.raw;
-        }
+    
+    lastValues_.clear();
+    liveValues_.clear();
+    if (res.size() > 100000) {
+        firstValues_.clear();
     }
 
-    lastValues_ = std::move(newLast);
-    liveValues_ = std::move(newLive);
-    firstValues_ = std::move(newFirst);
     if (!res.empty()) {
         updateGlobalAddress(res.front().address, resultDisplayType_, QStringLiteral("Scan result"));
     }
+    
     analyzeMetaResults();
     notifyResultsReset();
 }
@@ -1812,26 +1860,38 @@ void MainWindow::refreshWatchValues(bool force) {
     for (int i = 0; i < static_cast<int>(watches_.size()); ++i) {
         auto &w = watches_[i];
         if (w.isScript) continue;
+        
+        uintptr_t effectiveAddr = w.address;
+        if (w.isPointer && !w.offsets.empty()) {
+            effectiveAddr = resolvePointerChain(w.address, w.offsets);
+        }
+
+        if (effectiveAddr == 0) {
+            auto *valItem = watchTable_->item(i, 4);
+            if (valItem) valItem->setText("??");
+            continue;
+        }
+
         QByteArray current;
         bool ok = true;
         switch (w.type) {
             case core::ValueType::Byte: {
-                int8_t v = 0; ok = target_->readMemory(w.address, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
+                int8_t v = 0; ok = target_->readMemory(effectiveAddr, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
             }
             case core::ValueType::Int16: {
-                int16_t v = 0; ok = target_->readMemory(w.address, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
+                int16_t v = 0; ok = target_->readMemory(effectiveAddr, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
             }
             case core::ValueType::Int32: {
-                int32_t v = 0; ok = target_->readMemory(w.address, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
+                int32_t v = 0; ok = target_->readMemory(effectiveAddr, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
             }
             case core::ValueType::Int64: {
-                int64_t v = 0; ok = target_->readMemory(w.address, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
+                int64_t v = 0; ok = target_->readMemory(effectiveAddr, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
             }
             case core::ValueType::Float: {
-                float v = 0; ok = target_->readMemory(w.address, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
+                float v = 0; ok = target_->readMemory(effectiveAddr, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
             }
             case core::ValueType::Double: {
-                double v = 0; ok = target_->readMemory(w.address, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
+                double v = 0; ok = target_->readMemory(effectiveAddr, &v, sizeof(v)); if (ok) current = QByteArray(reinterpret_cast<char *>(&v), sizeof(v)); break;
             }
             case core::ValueType::ArrayOfByte:
             case core::ValueType::String:
@@ -2378,16 +2438,22 @@ void MainWindow::updateResultColumnVisibility() {
     resultsTable_->setColumnHidden(2, !showPreviousColumn_);
 }
 
-int MainWindow::resultRowCount() const {
-    if (!scanner_) return 0;
-    return static_cast<int>(scanner_->results().size());
-}
-
 uintptr_t MainWindow::resultAddressForRow(int row) const {
     if (!scanner_) return 0;
     const auto &res = scanner_->results();
     if (row < 0 || row >= static_cast<int>(res.size())) return 0;
     return res[row].address;
+}
+
+uintptr_t MainWindow::resolvePointerChain(uintptr_t base, const std::vector<int64_t> &offsets) const {
+    if (!target_ || !target_->isAttached()) return 0;
+    uintptr_t current = base;
+    for (size_t i = 0; i < offsets.size(); ++i) {
+        uintptr_t pointed = 0;
+        if (!target_->readMemory(current, &pointed, sizeof(pointed))) return 0;
+        current = pointed + offsets[i];
+    }
+    return current;
 }
 
 QVariant MainWindow::resultData(int row, int column, int role) const {
@@ -3010,6 +3076,10 @@ void MainWindow::promptPatchBytes(uintptr_t address) {
 
 void MainWindow::recordScanSnapshot() {
     if (!scanner_) return;
+    // Limit history to 1 undo level to save RAM
+    if (scanHistory_.size() > 1) {
+        scanHistory_.erase(scanHistory_.begin());
+    }
     scanHistory_.push_back(scanner_->results());
     updateUndoState();
 }

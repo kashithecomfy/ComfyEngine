@@ -66,12 +66,25 @@ public:
 
     const std::vector<ScanResult> &results() const { return results_; }
     void restoreResults(const std::vector<ScanResult> &results);
-    void reset() { results_.clear(); }
+    void reset() { results_.clear(); shadowRegions_.clear(); cleanupShadowFile(); }
     static bool parseAobPattern(const std::string &pattern, std::vector<int> &out);
+    bool hasShadowCopy() const { return !shadowRegions_.empty(); }
 
 private:
     const TargetProcess &proc_;
     std::vector<ScanResult> results_;
+
+    struct MemoryRegionSnapshot {
+        uintptr_t start;
+        size_t size;
+        uint64_t fileOffset; // Offset in the temporary shadow file
+    };
+    std::vector<MemoryRegionSnapshot> shadowRegions_;
+    std::string shadowFilePath_;
+    int shadowFd_{-1};
+    void *shadowMap_{nullptr};
+    size_t shadowMapSize_{0};
+    void cleanupShadowFile();
 
     template <typename T>
     bool parseValue(const std::string &s, T &out) const;
@@ -81,6 +94,8 @@ private:
     void snapshotAll(size_t alignment, const ScanParams &params);
     template <typename T>
     void rescan(const ScanParams &params, const T *needle, const T *needle2 = nullptr);
+    template <typename T>
+    void rescanShadow(const ScanParams &params, const T *needle, const T *needle2 = nullptr);
     template <typename T>
     void scanExactParallel(const T &needle, size_t alignment, const ScanParams &params);
     template <typename T>
@@ -94,6 +109,7 @@ private:
     // Special scanners
     void scanArrayOfByte(const ScanParams &params);
     void scanString(const ScanParams &params);
+    void createShadowCopy(const ScanParams &params);
 
     std::atomic<bool> cancel_{false};
     std::atomic<size_t> *progressDone_{nullptr};
